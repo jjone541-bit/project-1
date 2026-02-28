@@ -1,0 +1,369 @@
+
+
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
+
+import matplotlib.pyplot as plt
+
+
+
+import folium
+from folium.plugins import HeatMap
+import matplotlib
+matplotlib.use("TkAgg")
+
+df = pd.read_csv(r"C:\Users\33jdj\Downloads\CMPD_Incidents.csv")
+df.head()
+print(df.columns.tolist())
+# Columns you want to KEEP (everything else will be removed)
+keep_cols = [
+    "DATE_INCIDENT_BEGAN",
+    "HOUR", "DAY_OF_WEEK",
+    "MONTH",
+    "LATITUDE_PUBLIC",
+    "LONGITUDE_PUBLIC",
+    "NPA",
+    "CMPD_PATROL_DIVISION",
+    "HIGHEST_NIBRS_CODE",
+    "HIGHEST_NIBRS_DESCRIPTION",
+    "INCIDENT_FLAG"
+    ]
+
+df.head()
+cols_to_drop = [
+    "DATE_INCIDENT_BEGAN",
+    "HOUR",
+    "DAY_OF_WEEK",
+    "NPA",
+    "LATITUDE_PUBLIC",
+    "LONGITUDE_PUBLIC"
+]
+
+existing_cols = [c for c in cols_to_drop if c in df.columns]
+
+df = df.dropna(subset=existing_cols)
+
+cols2 = ["HOUR", "MONTH", "INCIDENT_FLAG"] 
+existing_cols2 = [c for c in cols2 if c in df.columns] 
+
+df = df.dropna(subset=existing_cols2)
+df["DATE_INCIDENT_BEGAN"] = pd.to_datetime(df["DATE_INCIDENT_BEGAN"], errors="coerce")
+
+numeric_cols = ["HOUR", "MONTH", "INCIDENT_FLAG", "LATITUDE_PUBLIC", "LONGITUDE_PUBLIC"]
+
+for col in numeric_cols:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    else:
+        print(f"Column missing: {col}")
+
+#create missing columns
+df["HOUR"] = df["DATE_INCIDENT_BEGAN"].dt.hour
+df["MONTH"] = df["DATE_INCIDENT_BEGAN"].dt.month
+
+
+df.columns
+#update the numeric columns to the correct data type
+df["HOUR"] = pd.to_numeric(df["HOUR"], errors="coerce")
+df["MONTH"] = pd.to_numeric(df["MONTH"], errors="coerce")
+df["LATITUDE_PUBLIC"] = pd.to_numeric(df["LATITUDE_PUBLIC"], errors="coerce")
+df["LONGITUDE_PUBLIC"] = pd.to_numeric(df["LONGITUDE_PUBLIC"], errors="coerce")
+#Convert date columns to datetime format
+date_cols = ["DATE_INCIDENT_BEGAN"]
+
+
+for col in date_cols:
+    df[col] = pd.to_datetime(df[col], errors="coerce")
+#Filter out rows where HOUR is outside the range of 0-23
+df = df[(df["HOUR"] >= 0) & (df["HOUR"] <= 23)]
+#latitude and longitude must be valid
+df = df[
+    (df["LATITUDE_PUBLIC"].between(35.0, 35.5)) &
+    (df["LONGITUDE_PUBLIC"].between(-81.0, -80.5))
+]
+
+df["DAY_OF_WEEK"] = df["DATE_INCIDENT_BEGAN"].dt.day_name()
+
+
+#clean up the DAY_OF_WEEK column by standardizing the text (e.g., title case, removing extra spaces)
+df["DAY_OF_WEEK"] = df["DAY_OF_WEEK"].str.title().str.strip()
+
+
+#clean up the NPA column by converting to string, stripping whitespace, and standardizing formatting
+df["NPA"] = df["NPA"].astype(str).str.strip()
+#clean up the CMPD_PATROL_DIVISION column by converting to string, stripping whitespace, and standardizing formatting
+df["CMPD_PATROL_DIVISION"] = df["CMPD_PATROL_DIVISION"].astype(str).str.strip()
+#remove duplicates incidents
+df = df.drop_duplicates()
+df.isnull().sum()
+df.info()
+df.head()
+df['DATE_INCIDENT_BEGAN'] = pd.to_datetime(df['DATE_INCIDENT_BEGAN'], errors='coerce')
+df['HOUR'] = df['DATE_INCIDENT_BEGAN'].dt.hour
+df['MONTH'] = df['DATE_INCIDENT_BEGAN'].dt.month
+df['DATE_INCIDENT_BEGAN'].isna().sum()
+df["HOUR"].head() 
+df["HOUR"].dtype
+heatmap_data = df.pivot_table(
+    index="DAY_OF_WEEK",
+    columns="HOUR",
+    values="INCIDENT_REPORT_ID", 
+    aggfunc="count",
+    fill_value=0
+)
+
+plt.figure(figsize=(12,6))
+sns.countplot(
+    data=df,
+    x="CMPD_PATROL_DIVISION",
+    color="steelblue",
+    order=df["CMPD_PATROL_DIVISION"].value_counts().index  # sorts bars by frequency
+)
+
+plt.title("Number of Incidents by Division")
+plt.xlabel("Division")
+plt.ylabel("Incident Count")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(14, 6))
+sns.heatmap(
+    heatmap_data,
+    cmap="YlOrRd",
+    linewidths=0.5,
+    linecolor="gray"
+)
+
+plt.title("Crime Frequency by Hour and Day of Week")
+plt.xlabel("Hour of Day (0–23)")
+plt.ylabel("Day of Week")
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12,6))
+
+division_counts = df["CMPD_PATROL_DIVISION"].value_counts()
+total = division_counts.sum()
+percentages = (division_counts / total * 100).round(1)
+
+sns.barplot(
+    x=division_counts.index,
+    y=division_counts.values,
+    palette="viridis"
+)
+
+# Add percentage labels
+for i, (count, pct) in enumerate(zip(division_counts.values, percentages.values)):
+    plt.text(i, count + 5, f"{pct}%", ha="center", fontsize=10)
+
+plt.title("Incidents by Division (with Percentages)")
+plt.xlabel("Division")
+plt.ylabel("Incident Count")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12,6))
+
+unique_divisions = df["CMPD_PATROL_DIVISION"].unique()
+palette = sns.color_palette("tab20", len(unique_divisions))
+
+sns.countplot(
+    data=df,
+    x="CMPD_PATROL_DIVISION",
+    palette=palette,
+    order=df["CMPD_PATROL_DIVISION"].value_counts().index
+)
+
+plt.title("Incidents by Division (Color‑Coded)")
+plt.xlabel("Division")
+plt.ylabel("Incident Count")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(10,6))
+
+division_counts = df["CMPD_PATROL_DIVISION"].value_counts()
+
+sns.barplot(
+    y=division_counts.index,
+    x=division_counts.values,
+    palette="coolwarm"
+)
+
+plt.title("Incidents by Division (Horizontal Bar Chart)")
+plt.xlabel("Incident Count")
+plt.ylabel("Division")
+plt.tight_layout()
+plt.show()
+
+df["DAY_OF_WEEK"] = df["DATE_INCIDENT_BEGAN"].dt.day_name()
+weekday_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+df["DAY_OF_WEEK"] = pd.Categorical(df["DAY_OF_WEEK"], categories=weekday_order, ordered=True)
+
+heatmap_data = df.pivot_table(
+    index="CMPD_PATROL_DIVISION",
+    columns="DAY_OF_WEEK",
+    values="INCIDENT_REPORT_ID",
+    aggfunc="count",
+    fill_value=0
+)
+
+plt.figure(figsize=(16,8))
+sns.heatmap(
+    heatmap_data,
+    cmap="Blues",
+    linewidths=0.5,
+    linecolor="gray"
+)
+
+plt.title("Crime Heatmap: Division vs. Day of Week")
+plt.xlabel("Day of Week")
+plt.ylabel("Division")
+plt.tight_layout()
+plt.show()
+
+# 1. Find the top N divisions (example: top 3)
+top_divisions = df["CMPD_PATROL_DIVISION"].value_counts().head(3).index
+
+# 2. Filter the dataframe to only those divisions
+df_top = df[df["CMPD_PATROL_DIVISION"].isin(top_divisions)]
+
+# 3. Plot crimes by hour for only the top divisions
+plt.figure(figsize=(12,5))
+sns.countplot(
+    data=df_top,
+    x="HOUR",
+    hue="CMPD_PATROL_DIVISION",
+    order=sorted(df_top["HOUR"].dropna().unique())
+)
+
+plt.title("Crimes by Hour of Day (Top Divisions Only)")
+plt.xlabel("Hour of Day (0–23)")
+plt.ylabel("Number of Incidents")
+plt.legend(title="Division")
+plt.tight_layout()
+plt.show()
+
+top_divisions = df["CMPD_PATROL_DIVISION"].value_counts().head(3).index
+top_incidents = df["HIGHEST_NIBRS_DESCRIPTION"].value_counts().head(5).index
+
+df_top = df[
+    df["CMPD_PATROL_DIVISION"].isin(top_divisions) &
+    df["HIGHEST_NIBRS_DESCRIPTION"].isin(top_incidents)
+]
+
+plt.figure(figsize=(14,6))
+sns.countplot(
+    data=df_top,
+    x="HOUR",
+    hue="HIGHEST_NIBRS_DESCRIPTION",
+    order=sorted(df_top["HOUR"].dropna().unique())
+)
+
+plt.title(f"Crimes by Hour for Top Divisions: {', '.join(top_divisions)}")
+plt.xlabel("Hour of Day (0–23)")
+plt.ylabel("Number of Incidents")
+plt.legend(title="Crime Type", bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+plt.show()
+
+g = sns.FacetGrid(
+    df_top,
+    col="CMPD_PATROL_DIVISION",
+    col_wrap=3,
+    height=4,
+    sharey=False
+)
+
+g.map_dataframe(
+    sns.countplot,
+    x="HOUR",
+    hue="HIGHEST_NIBRS_DESCRIPTION",
+    order=sorted(df_top["HOUR"].dropna().unique())
+)
+
+g.add_legend(title="Crime Type")
+g.set_axis_labels("Hour of Day", "Number of Incidents")
+g.fig.suptitle("Crimes by Hour for Top Divisions (with Crime Types)", y=1.02)
+plt.show()
+
+df.columns
+
+plt.figure(figsize=(12,5))
+sns.countplot(data=df, x='DAY_OF_WEEK', color='darkgreen',
+              order=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'])
+plt.title('Incidents by Day of Week')
+plt.xlabel('Day of Week')
+plt.ylabel('Number of Incidents')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+heatmap_data = df.pivot_table(
+    index='DAY_OF_WEEK',
+    columns='HOUR',
+    values='INCIDENT_REPORT_ID',
+    aggfunc='count'
+).reindex(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'])
+
+plt.figure(figsize=(14,6))
+sns.heatmap(heatmap_data, cmap='Reds')
+plt.title('Heatmap of Incidents by Hour and Day of Week')
+plt.xlabel('Hour of Day')
+plt.ylabel('Day of Week')
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(8,8))
+sns.scatterplot(
+    data=df,
+    x='LONGITUDE_PUBLIC',
+    y='LATITUDE_PUBLIC',
+    s=10,
+    alpha=0.4
+)
+plt.title('Spatial Distribution of Crime Incidents')
+plt.xlabel('Longitude')
+plt.ylabel('Latitude')
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12,5))
+npa_counts = df['NPA'].value_counts().head(20)
+
+sns.barplot(x=npa_counts.index, y=npa_counts.values, palette='viridis')
+plt.title('Crime Counts by Neighborhood Profile Area (Top 20)')
+plt.xlabel('NPA')
+plt.ylabel('Number of Incidents')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12,5))
+division_counts = df['CMPD_PATROL_DIVISION'].value_counts()
+
+sns.barplot(x=division_counts.index, y=division_counts.values, palette='magma')
+plt.title('Crime Counts by CMPD Patrol Division')
+plt.xlabel('Patrol Division')
+plt.ylabel('Number of Incidents')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(12,5))
+sns.countplot(data=df, x='MONTH', color='slateblue')
+plt.title('Incidents by Month')
+plt.xlabel('Month')
+plt.ylabel('Number of Incidents')
+plt.tight_layout()
+plt.show()
